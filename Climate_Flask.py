@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, func
 from flask import Flask, jsonify
 
 # Create engine
-engine = create_engine("sqlite:///Resources/hawaii.sqlite")
+engine = create_engine("sqlite:///Resources/hawaii.sqlite", connect_args={'check_same_thread': False})
 
 # Reflect an existing database into a new model
 Base = automap_base()
@@ -25,6 +25,10 @@ Station = Base.classes.station
 # Create our session (link) from Python to the DB
 session = Session(engine)
 
+# Find latest record in dataset
+last = session.query(Measurement.date).order_by(Measurement.date.desc()).first()
+first = session.query(Measurement.date).order_by(Measurement.date.asc()).first()
+
 # Flask setup
 app = Flask(__name__)
 
@@ -36,8 +40,9 @@ def welcome():
         f"/api/v1.0/precipitation<br/>"
         f"/api/v1.0/stations<br/>"
         f"/api/v1.0/tobs<br/>"
-        f"/api/v1.0/*start*<br/>"
-        f"/api/v1.0/*start*/*end*"
+        f"/api/v1.0/start*<br/>"
+        f"/api/v1.0/start*/end*<br/>"
+        f"* start/end dates should use the format yyyy-mm-dd (e.g., 2017-01-01)."
     )
 
 @app.route("/api/v1.0/precipitation")
@@ -58,8 +63,7 @@ def stations():
 
 @app.route("/api/v1.0/tobs")
 def tobs():
-    date = session.query(Measurement.date).order_by(Measurement.date.desc()).first()
-    year_ago = dt.datetime.strptime(date[0], "%Y-%m-%d") - dt.timedelta(days=365)
+    year_ago = dt.datetime.strptime(last[0], "%Y-%m-%d") - dt.timedelta(days=365)
 
     items = []
     results = session.query(Measurement.date, Measurement.tobs).filter(Measurement.date > year_ago).all()
@@ -69,16 +73,33 @@ def tobs():
     return jsonify(items)
 
 @app.route("/api/v1.0/<start>")
-def start():
-    start_date = dt.datetime.strptime(start, "%Y-%m-%d")
-    print(start_date)
-    
-    items = []
-    results = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).filter(Measurement.date > start_date).all()
+def start_search(start):
+    if start > last[0]:
+        return jsonify({"ERROR": f"Invalid start date, cannot be after {last[0]}."}), 404
+    elif start < first[0]:
+        return jsonify({"ERROR": f"Invalid start date, cannot be before {first[0]}."}), 404
+    else:
+        start_date = dt.datetime.strptime(start, "%Y-%m-%d")
+        results = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
+            filter(Measurement.date >= (start_date  - dt.timedelta(days=1))).all()
+        return jsonify({'TMIN':results[0][0], 'TAVG':results[0][1], 'TMAX':results[0][2]})
 
-    for row in results:
-        items.append({'TMIN':row[0], 'TAVG':row[1], 'TMAX':row[2]})
-    return jsonify(items)
+    
+@app.route("/api/v1.0/<start>/<end>")
+def start_end_search(start, end):
+    if start > last[0] or end > last[0]:
+        return jsonify({"ERROR": f"Invalid date, cannot be after {last[0]}."}), 404
+    elif start < first[0] or end < first[0]:
+        return jsonify({"ERROR": f"Invalid date, cannot be before {first[0]}."}), 404
+    elif start > end:
+        return jsonify({"ERROR": f"Start date cannot be after end date."}), 404
+    else:
+        start_date = dt.datetime.strptime(start, "%Y-%m-%d")
+        end_date = dt.datetime.strptime(end, "%Y-%m-%d")
+        results = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
+            filter(Measurement.date >= (start_date  - dt.timedelta(days=1))).\
+            filter(Measurement.date <= (end_date  + dt.timedelta(days=1))).all()
+        return jsonify({'TMIN':results[0][0], 'TAVG':results[0][1], 'TMAX':results[0][2]})
 
 if __name__ == "__main__":
     app.run(debug=True)
