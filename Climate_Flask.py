@@ -81,10 +81,9 @@ def start_search(start):
     else:
         start_date = dt.datetime.strptime(start, "%Y-%m-%d")
         results = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
-            filter(Measurement.date >= (start_date  - dt.timedelta(days=1))).all()
+            filter(Measurement.date > (start_date  - dt.timedelta(days=1))).all()
         return jsonify({'TMIN':results[0][0], 'TAVG':results[0][1], 'TMAX':results[0][2]})
 
-    
 @app.route("/api/v1.0/<start>/<end>")
 def start_end_search(start, end):
     if start > last[0] or end > last[0]:
@@ -97,8 +96,8 @@ def start_end_search(start, end):
         start_date = dt.datetime.strptime(start, "%Y-%m-%d")
         end_date = dt.datetime.strptime(end, "%Y-%m-%d")
         results = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
-            filter(Measurement.date >= (start_date  - dt.timedelta(days=1))).\
-            filter(Measurement.date <= (end_date  + dt.timedelta(days=1))).all()
+            filter(Measurement.date > (start_date - dt.timedelta(days=1))).\
+            filter(Measurement.date < (end_date + dt.timedelta(days=1))).all()
         return jsonify({'TMIN':results[0][0], 'TAVG':results[0][1], 'TMAX':results[0][2]})
 
 if __name__ == "__main__":
